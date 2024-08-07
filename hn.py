@@ -1,12 +1,10 @@
-import requests
-import indieweb_utils
-import sys
-import pprint
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
-
-DOMAIN = "jeremykun.com"
-SEARCH_URL = f"https://hn.algolia.com/api/v1/search?query={DOMAIN}&tags=story&hitsPerPage=20"
+import argparse
+import indieweb_utils
+import pprint
+import requests
+import sys
 
 def get_post_text(post):
     if post.get("story_text"):
@@ -18,9 +16,7 @@ def get_post_text(post):
 
 
 def send_webmention(post_url, target_url):
-    print(f"Found a link to {DOMAIN} on Hacker News!")
-    print("Link to post: " + post_url)
-    print("Link to my website: " + target_url)
+    print(f"Found a post: {post_url} -> {target_url}")
 
     try:
         indieweb_utils.send_webmention(post_url, target_url)
@@ -31,9 +27,10 @@ def send_webmention(post_url, target_url):
     print("Webmention sent!")
 
 
-def main():
+def main(domain):
+    search_url = f"https://hn.algolia.com/api/v1/search?query={domain}&tags=story&hitsPerPage=20"
     try:
-        r = requests.get(SEARCH_URL)
+        r = requests.get(search_url)
     except requests.exceptions.RequestException as e:
         print(e)
         sys.exit(1)
@@ -47,7 +44,7 @@ def main():
     for page in range(0, num_pages):
         print(f"Querying page {page}")
         try:
-            r = requests.get(f"{SEARCH_URL}&page={page}")
+            r = requests.get(f"{search_url}&page={page}")
         except requests.exceptions.RequestException as e:
             print(e)
             sys.exit(1)
@@ -57,7 +54,7 @@ def main():
         for post in hn_posts:
             post_url = "https://news.ycombinator.com/item?id=" + str(post["objectID"])
             post_http_url = post.get("url")
-            if post_http_url is not None and urlparse(post_http_url).netloc == DOMAIN:
+            if post_http_url is not None and urlparse(post_http_url).netloc == domain:
                 send_webmention(post_url, post_http_url)
                 continue
 
@@ -68,10 +65,13 @@ def main():
                 if link.get("href") is None:
                     continue
 
-                domain = urlparse(link.get("href")).netloc
-                if domain == DOMAIN:
+                post_domain = urlparse(link.get("href")).netloc
+                if post_domain == domain:
                     send_webmention(post_url, link.get("href"))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--domain')
+    args = parser.parse_args()
+    main(args.domain)
