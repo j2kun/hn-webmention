@@ -1,10 +1,12 @@
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import argparse
+import datetime
 import indieweb_utils
 import pprint
 import requests
 import sys
+
 
 def get_post_text(post):
     if post.get("story_text"):
@@ -27,8 +29,10 @@ def send_webmention(post_url, target_url):
     print("Webmention sent!")
 
 
-def main(domain):
-    search_url = f"https://hn.algolia.com/api/v1/search?query={domain}&tags=story&hitsPerPage=20"
+def main(domain, since_days=7):
+    search_url = (
+        f"https://hn.algolia.com/api/v1/search?query={domain}&tags=story&hitsPerPage=20"
+    )
     try:
         r = requests.get(search_url)
     except requests.exceptions.RequestException as e:
@@ -52,6 +56,23 @@ def main(domain):
         response = r.json()
         hn_posts = response["hits"]
         for post in hn_posts:
+            created_at = (
+                datetime.datetime.strptime(post["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+                if "created_at" in post
+                else datetime.datetime.now()
+            )
+            now = datetime.datetime.now()
+
+            if (now - created_at).days > since_days:
+                # we already manually handled this webmention with the initial
+                # script run
+                print(
+                    f"Skipping post because it's publication date ({created_at}) "
+                    f"is older than the threshold of {since_days} days since "
+                    f"today ({now})."
+                )
+                continue
+
             post_url = "https://news.ycombinator.com/item?id=" + str(post["objectID"])
             post_http_url = post.get("url")
             if post_http_url is not None and urlparse(post_http_url).netloc == domain:
@@ -72,6 +93,7 @@ def main(domain):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--domain')
+    parser.add_argument("-d", "--domain")
+    parser.add_argument("-s", "--since_days", type=int, default=7)
     args = parser.parse_args()
-    main(args.domain)
+    main(args.domain, args.since_days)
